@@ -1,4 +1,10 @@
+import { Actor5e } from "../../systems/dnd5e/module/actor/entity.js";
 import { Item5e } from "../../systems/dnd5e/module/item/entity.js";
+import { SpellCastDialog } from "../../systems/dnd5e/module/apps/spell-cast-dialog.js";
+
+Actor5e.prototype.useSpell = async function(item, {configureDialog=true}={}) {
+	return item.roll();
+}
 
 class ItemWindow extends FormApplication {
 	static get defaultOptions() {
@@ -34,8 +40,61 @@ class ItemWindow extends FormApplication {
 	}
 
 	/*
+	 * Copied from dnd5e/module/actor/entity.js with the item.roll calls
+	 * removed, and a simple chat message instead, and the item object not
+	 * recreated, and the actor passed in explicitly.
+	 */
+	async useSpell(actor, item, {configureDialog=true}={}) {
+		function castAtLevel(l, count) {
+			let chatData = {
+				user: game.user._id,
+				type: CONST.CHAT_MESSAGE_TYPES.OTHER,
+				speaker: {
+					actor: actor._id,
+					token: actor.token,
+					alias: actor.name
+				}
+			};
+			if (consume) {
+				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em> using one of ${count} level <strong>${l}</strong> slots.`;
+			}
+			else {
+				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em>.`;
+			}
+
+			return ChatMessage.create(chatData, {displaySheet: false});
+		}
+
+		if ( item.data.type !== "spell" ) throw new Error("Wrong Item type");
+
+		// Determine if the spell uses slots
+		let lvl = item.data.data.level;
+		const usesSlots = (lvl > 0) && item.data.data.preparation.mode === "prepared";
+		if ( !usesSlots ) return castAtLevel(item.data.data.level, 0, false);
+
+		// Configure the casting level and whether to consume a spell slot
+		let consume = true;
+		if ( configureDialog ) {
+			const spellFormData = await SpellCastDialog.create(actor, item);
+			lvl = parseInt(spellFormData.get("level"));
+			consume = Boolean(spellFormData.get("consume"));
+		}
+
+		// Update Actor data
+		let count = actor.data.data.spells["spell"+lvl].value;
+		if ( consume && (lvl > 0) ) {
+			await actor.update({
+				[`data.spells.spell${lvl}.value`]: Math.max(parseInt(actor.data.data.spells["spell"+lvl].value) - 1, 0)
+			});
+		} 
+
+		// Invoke the Item roll
+		return castAtLevel(lvl, count, consume);
+	}
+
+	/*
 	 * Copied from dnd5e/module/item/entity.js with the permissions
-	 * checks removed.
+	 * checks removed, and use slot added.
 	 */
 	static async _onChatCardAction(event) {
 		event.preventDefault();
@@ -57,7 +116,7 @@ class ItemWindow extends FormApplication {
 		if ( !actor ) return;
 
 		// Get the Item
-		const item = actor.getOwnedItem(card.dataset.itemId);
+		let item = actor.getOwnedItem(card.dataset.itemId);
 
 		// Get the target
 		const target = isTargetted ? Item5e._getChatCardTarget(card) : null;
@@ -75,6 +134,9 @@ class ItemWindow extends FormApplication {
 
 		// Tool usage
 		else if ( action === "toolCheck" ) await item.rollToolCheck({event});
+
+		// Additional button handling...
+		else if ( action === "spellSlot" ) await this.useSpell(actor, item);
 
 		// Re-enable the button
 		button.disabled = false;
@@ -119,12 +181,18 @@ Hooks.on('ready', () => {
 		if (html.type === CONST.CHAT_MESSAGE_TYPES.OTHER) {
 			let thtml = $(html.content);
 
-			if (thtml.hasClass('item-card') && thtml.hasClass('chat-card') && thtml.find('button').length > 0 && !thtml.hasClass('ezroller-approved')) {
+			if (thtml.hasClass('item-card') && thtml.hasClass('chat-card') && !thtml.hasClass('ezroller-approved')) {
 				let actorId = thtml.attr('data-actor-id');
 				let itemId = thtml.attr('data-item-id');
 				let title = thtml.find('h3').first().html();
+				let actor = game.actors.get(actorId);
+				let item = actor.getOwnedItem(itemId);
 
-				new ItemWindow({'chatdata':html, 'title':title, 'html':html.content, 'actorId':actorId, 'itemId':itemId}, {}).render(true);
+				// If it's a spell, inject slot using button....
+				if (item.data.type === 'spell' && item.data.data.level > 0) {
+					thtml.find('.card-buttons').prepend("<button data-action=\"spellSlot\">Use Spell Slot<!-- TODO: i18n --></button>");
+				}
+				new ItemWindow({'chatdata':html, 'title':title, 'html':thtml[0].outerHTML, 'actorId':actorId, 'itemId':itemId}, {}).render(true);
 				return false;
 			}
 		}
