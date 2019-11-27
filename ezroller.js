@@ -147,9 +147,11 @@ class ItemWindow extends FormApplication {
 	 * checks removed.
 	 */
 	static async _onFooterAction(event) {
+		event.preventDefault();
 		let thtml = $(this.object.html);
 
 		thtml.addClass('ezroller-approved');
+		thtml.find('.card-buttons').remove();
 		this.object.chatdata.content = thtml[0].outerHTML;
 		await ChatMessage.create(this.object.chatdata);
 	}
