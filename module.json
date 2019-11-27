@@ -11,7 +11,7 @@
 			"path": "lang/en.json"
 		}
 	],
-	"systems": "dnd5e",
+	"systems": ["dnd5e"],
 	"esmodules": ["./ezroller.js"],
 	"socket": true,
 	"styles": [],
