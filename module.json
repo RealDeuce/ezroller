@@ -1,0 +1,21 @@
+{
+	"name": "ezroller",
+	"title": "E-Z Roller",
+	"description": "Next Action Window",
+	"version": "0.0.0",
+	"author": "Deuce",
+	"languages": [
+		{
+			"lang": "en",
+			"name": "English",
+			"path": "lang/en.json"
+		}
+	],
+	"esmodules": ["./ezroller.js"],
+	"socket": true,
+	"styles": [],
+	"packs": [],
+	"manifest": "https://raw.githubusercontent.com/RealDeuce/torch/master/module.json",
+	"download": "https://raw.githubusercontent.com/RealDeuce/torch/master/torch.zip",
+	"minimumCoreVersion": "0.4.0"
+}
