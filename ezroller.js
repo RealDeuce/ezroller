@@ -69,15 +69,19 @@ class ItemWindow extends FormApplication {
 
 		// Determine if the spell uses slots
 		let lvl = item.data.data.level;
+		let consume = false;
 		const usesSlots = (lvl > 0) && item.data.data.preparation.mode === "prepared";
-		if ( !usesSlots ) return castAtLevel(item.data.data.level, 0, false);
+		if ( !usesSlots ) return castAtLevel(item.data.data.level, 0);
 
 		// Configure the casting level and whether to consume a spell slot
-		let consume = true;
+		consume = true;
 		if ( configureDialog ) {
 			const spellFormData = await SpellCastDialog.create(actor, item);
 			lvl = parseInt(spellFormData.get("level"));
 			consume = Boolean(spellFormData.get("consume"));
+			if ( lvl !== item.data.data.level ) {
+				item = item.constructor.createOwned(mergeObject(item.data, {"data.level": lvl}, {inplace: false}), actor);
+			} 
 		}
 
 		// Update Actor data
@@ -89,7 +93,7 @@ class ItemWindow extends FormApplication {
 		} 
 
 		// Invoke the Item roll
-		return castAtLevel(lvl, count, consume);
+		return castAtLevel(item.data.data.level, count);
 	}
 
 	/*
@@ -116,18 +120,24 @@ class ItemWindow extends FormApplication {
 		if ( !actor ) return;
 
 		// Get the Item
-		let item = actor.getOwnedItem(card.dataset.itemId);
+		const item = actor.getOwnedItem(card.dataset.itemId);
 
-		// Get the target
-		const target = isTargetted ? Item5e._getChatCardTarget(card) : null;
+		// Get card targets
+		const targets = isTargetted ? this._getChatCardTargets(card) : [];
+		const spellLevel = parseInt(card.dataset.spellLevel) || null;
 
 		// Attack and Damage Rolls
 		if ( action === "attack" ) await item.rollAttack({event});
-		else if ( action === "damage" ) await item.rollDamage({event});
-		else if ( action === "versatile" ) await item.rollDamage({event, versatile: true});
+		else if ( action === "damage" ) await item.rollDamage({event, spellLevel});
+		else if ( action === "versatile" ) await item.rollDamage({event, spellLevel, versatile: true});
+		else if ( action === "formula" ) await item.rollFormula({event});
 
-		// Saving Throw
-		else if ( action === "save" ) await target.rollAbilitySave(button.dataset.ability, {event});
+		// Saving Throws for card targets
+		else if ( action === "save" ) {
+			for ( let t of targets ) {
+				await t.rollAbilitySave(button.dataset.ability, {event});
+			}
+		}
 
 		// Consumable usage
 		else if ( action === "consume" ) await item.rollConsumable({event});
