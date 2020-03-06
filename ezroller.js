@@ -201,7 +201,7 @@ Hooks.on('ready', () => {
 				let item = actor.getOwnedItem(itemId);
 
 				// If it's a spell, inject slot using button....
-				if (item.data.type === 'spell' && item.data.data.level > 0) {
+				if (item !== undefined && item.data !== undefined && item.data.data !== undefined && item.data.type === 'spell' && item.data.data.level > 0) {
 					thtml.find('.card-buttons').prepend("<button data-action=\"spellSlot\">Use Spell Slot<!-- TODO: i18n --></button>");
 				}
 				new ItemWindow({'chatdata':html, 'title':title, 'html':thtml[0].outerHTML, 'actorId':actorId, 'itemId':itemId}, {}).render(true);
