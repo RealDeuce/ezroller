@@ -1,6 +1,7 @@
 import { Actor5e } from "../../systems/dnd5e/module/actor/entity.js";
 import { Item5e } from "../../systems/dnd5e/module/item/entity.js";
 import { SpellCastDialog } from "../../systems/dnd5e/module/apps/spell-cast-dialog.js";
+import { AbilityTemplate } from "../../systems/dnd5e/module/pixi/ability-template.js";
 
 Actor5e.prototype.useSpell = async function(item, {configureDialog=true}={}) {
 	return item.roll();
@@ -62,6 +63,13 @@ class ItemWindow extends FormApplication {
 				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em>.`;
 			}
 
+			// Initiate ability template placement workflow if selected
+			if (item.hasAreaTarget && placeTemplate) {
+				const template = AbilityTemplate.fromItem(item);
+				if ( template ) template.drawPreview(event);
+				if ( actor.sheet.rendered ) actor.sheet.minimize();
+			}
+
 			return ChatMessage.create(chatData, {displaySheet: false});
 		}
 
@@ -70,15 +78,18 @@ class ItemWindow extends FormApplication {
 		// Determine if the spell uses slots
 		let lvl = item.data.data.level;
 		let consume = false;
+		let placeTemplate = false;
 		const usesSlots = (lvl > 0) && item.data.data.preparation.mode === "prepared";
 		if ( !usesSlots ) return castAtLevel(item.data.data.level, 0);
 
 		// Configure the casting level and whether to consume a spell slot
 		consume = true;
+
 		if ( configureDialog ) {
 			const spellFormData = await SpellCastDialog.create(actor, item);
 			lvl = parseInt(spellFormData.get("level"));
 			consume = Boolean(spellFormData.get("consume"));
+			placeTemplate = Boolean(spellFormData.get("placeTemplate"));
 			if ( lvl !== item.data.data.level ) {
 				item = item.constructor.createOwned(mergeObject(item.data, {"data.level": lvl}, {inplace: false}), actor);
 			} 
@@ -121,10 +132,20 @@ class ItemWindow extends FormApplication {
 
 		// Get the Item
 		const item = actor.getOwnedItem(card.dataset.itemId);
+		if ( !item ) {
+			return ui.notifications.error(`The requested item ${card.dataset.itemId} no longer exists on Actor ${actor.name}`)
+		}
+		const spellLevel = parseInt(card.dataset.spellLevel) || null;
 
 		// Get card targets
-		const targets = isTargetted ? this._getChatCardTargets(card) : [];
-		const spellLevel = parseInt(card.dataset.spellLevel) || null;
+		let targets = [];
+		if ( isTargetted ) {
+			targets = this._getChatCardTargets(card);
+			if ( !targets.length ) {
+				ui.notifications.warn(`You must have one or more controlled Tokens in order to use this option.`);
+				return button.disabled = false;
+			}
+		}
 
 		// Attack and Damage Rolls
 		if ( action === "attack" ) await item.rollAttack({event});
@@ -144,6 +165,12 @@ class ItemWindow extends FormApplication {
 
 		// Tool usage
 		else if ( action === "toolCheck" ) await item.rollToolCheck({event});
+
+		// Spell Template Creation
+		else if ( action === "placeTemplate") {
+			const template = AbilityTemplate.fromItem(item);
+			if ( template ) template.drawPreview(event);
+		}
 
 		// Additional button handling...
 		else if ( action === "spellSlot" ) await this.useSpell(actor, item);
@@ -189,7 +216,7 @@ class ItemWindow extends FormApplication {
 
 
 Hooks.on('ready', () => {
-	Hooks.on('preCreateChatMessage', (app, html, data) => {
+	Hooks.on('preCreateChatMessage', (html, data, id) => {
 		if (html.type === CONST.CHAT_MESSAGE_TYPES.OTHER) {
 			let thtml = $(html.content);
 
