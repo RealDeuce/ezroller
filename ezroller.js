@@ -212,10 +212,106 @@ class ItemWindow extends FormApplication {
 	_updateObject(event, formData) {
 		console.log("Got it!");
 	}
+
+	updatePins(pinned) {
+		const pins = game.settings.get('ezroller', 'pins');
+		let pin;
+
+		let idx = pins.findIndex(({itemId}) => itemId === this.object.itemId);
+		if (pinned !== undefined && idx !== -1) {
+			pins.splice(idx, 1);
+			game.settings.set('ezroller', 'pins', pins);
+			return null;
+		}
+		if (pinned !== undefined && idx === -1) {
+			pin = {'chatdata':this.object.html, 'title':this.object.title, 'html':this.object.html, 'actorId':this.object.actorId, 'itemId':this.object.itemId};
+			idx = pins.push(pin) - 1;
+		}
+		if (idx === -1)
+			return null;
+		pin = pins[idx];
+
+		pin.x = this.position.left;
+		pin.y = this.position.top;
+		pin.w = this.position.width;
+		pin.h = this.position.height;
+		pin.min = this._minimized;
+		if (this._skycons !== undefined) {
+			pin.skycons = {};
+			if (this._minimized) {
+				if (this._skycons.maxpos !== undefined)
+					pin.skycons.maxpos = {'x':this._skycons.maxpos.x, 'y':this._skycons.maxpos.y};
+				pin.skycons.minpos = {'x':this.position.left, 'y':this.position.top};
+			}
+			else {
+				if (this._skycons.minpos !== undefined)
+					pin.skycons.minpos = {'x':this._skycons.minpos.x, 'y':this._skycons.minpos.y};
+				pin.skycons.maxpos = {'x':this.position.left, 'y':this.position.top};
+			}
+		}
+			
+		game.settings.set('ezroller', 'pins', pins);
+		return pin;
+	}
+
+	async close(...args) {
+		await super.close(...args);
+		const pins = game.settings.get('ezroller', 'pins');
+		const idx = pins.findIndex(({itemId}) => itemId === this.object.itemId);
+		pins.splice(idx, 1);
+		game.settings.set('ezroller', 'pins', pins);
+	}
+
+	async _renderOuter(...args) {
+		const html = await super._renderOuter(...args);
+		const pin = $('<a class="pin"><i class="fas fa-thumbtack"></i></a>');
+		pin.insertBefore(html.find('a.close'));
+		if (this.updatePins() === null) {
+			pin.css('color', pin.next().css('color'));
+		}
+		else {
+			pin.css('color', 'red');
+		}
+		pin.click(() => {
+			if (this.updatePins(true) === null) {
+				pin.css('color', pin.next().css('color'));
+			}
+			else {
+				pin.css('color', 'red');
+			}
+		});
+		return html;
+	}
+
+	async minimize(...args) {
+		await super.minimize(...args);
+		this.updatePins();
+	}
+
+	async mazimize(...args) {
+		await super.maximize(...args);
+		this.updatePins();
+	}
+
+	async _onResize(...args) {
+		await super._onResize(...args);
+		this.updatePins();
+	}
+
+	setPosition(...args) {
+		super.setPosition(...args);
+		this.updatePins();
+	}
+
 }
 
 
 Hooks.on('ready', () => {
+	game.settings.register('ezroller', 'pins', {
+		name: 'pins',
+		default: [],
+		scope: 'client'
+	});
 	Hooks.on('preCreateChatMessage', (html, data, id) => {
 		if (html.type === CONST.CHAT_MESSAGE_TYPES.OTHER) {
 			let thtml = $(html.content);
@@ -235,5 +331,20 @@ Hooks.on('ready', () => {
 				return false;
 			}
 		}
+	});
+	const pins = game.settings.get('ezroller', 'pins');
+	pins.forEach(async (pin) => {
+		let x = pin.x;
+		let y = pin.y;
+		if (pin.skycons !== undefined && pin.skycons.maxpos !== undefined) {
+			x = pin.skycons.maxpos.x;
+			y = pin.skycons.maxpos.y;
+		}
+		const win = new ItemWindow({'chatdata':pin.chatdata, 'title':pin.title, 'html':pin.html, 'actorId':pin.actorId, 'itemId':pin.itemId}, {'left':x, 'top':y});
+		if (pin.skycons !== undefined)
+			win._skycons = JSON.parse(JSON.stringify(pin.skycons));
+		await win._render(true, {'left':x, 'top':y});
+		if (pin.min)
+			win.minimize();
 	});
 });
