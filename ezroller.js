@@ -62,6 +62,21 @@ class ItemWindow extends FormApplication {
 			else {
 				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em>.`;
 			}
+			if (item.hasSave) {
+				let save = item.data.data.save || {};
+				if ( !save.ability )
+					save.dc = null;
+				else if ( item.isOwned ) { // Actor owned items
+					if ( save.scaling === "spell" )
+						save.dc = item.actor.data.data.attributes.spelldc;
+					else if ( save.scaling !== "flat" )
+						save.dc = item.actor.getSpellDC(save.scaling);
+				} else { // Un-owned items
+					if ( save.scaling !== "flat" )
+						save.dc = null;
+				}
+				chatData.content += save.ability ? ` Save DC: ${save.dc || ""} ${CONFIG.DND5E.abilities[save.ability]}.` : "";
+			}
 
 			// Initiate ability template placement workflow if selected
 			if (item.hasAreaTarget && placeTemplate) {
@@ -324,8 +339,8 @@ Hooks.on('ready', () => {
 				let item = actor.getOwnedItem(itemId);
 
 				// If it's a spell, inject slot using button....
-				if (item !== undefined && item.data !== undefined && item.data.data !== undefined && item.data.type === 'spell' && item.data.data.level > 0) {
-					thtml.find('.card-buttons').prepend("<button data-action=\"spellSlot\">Use Spell Slot<!-- TODO: i18n --></button>");
+				if (item !== undefined && item.data !== undefined && item.data.data !== undefined && item.data.type === 'spell' && (item.data.data.level > 0 || item.hasSave)) {
+					thtml.find('.card-buttons').prepend("<button data-action=\"spellSlot\">Cast Spell<!-- TODO: i18n --></button>");
 				}
 				new ItemWindow({'chatdata':html, 'title':title, 'html':thtml[0].outerHTML, 'actorId':actorId, 'itemId':itemId}, {}).render(true);
 				return false;
