@@ -19,5 +19,5 @@
 	"manifest": "https://raw.githubusercontent.com/RealDeuce/ezroller/master/module.json",
 	"download": "https://raw.githubusercontent.com/RealDeuce/ezroller/master/ezroller.zip",
 	"minimumCoreVersion": "0.5.4",
-	"compatibleCoreVersion": "0.5.5"
+	"compatibleCoreVersion": "0.6.0"
 }

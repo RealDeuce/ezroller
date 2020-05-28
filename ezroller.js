@@ -1,7 +1,7 @@
-import { Actor5e } from "../../systems/dnd5e/module/actor/entity.js";
-import { Item5e } from "../../systems/dnd5e/module/item/entity.js";
-import { SpellCastDialog } from "../../systems/dnd5e/module/apps/spell-cast-dialog.js";
-import { AbilityTemplate } from "../../systems/dnd5e/module/pixi/ability-template.js";
+import Actor5e from "../../systems/dnd5e/module/actor/entity.js";
+import Item5e from "../../systems/dnd5e/module/item/entity.js";
+import SpellCastDialog from "../../systems/dnd5e/module/apps/spell-cast-dialog.js";
+import AbilityTemplate from "../../systems/dnd5e/module/pixi/ability-template.js";
 
 Actor5e.prototype.useSpell = async function(item, {configureDialog=true}={}) {
 	return item.roll();
@@ -79,7 +79,7 @@ class ItemWindow extends FormApplication {
 			}
 
 			// Initiate ability template placement workflow if selected
-			if (item.hasAreaTarget && placeTemplate) {
+			if ( placeTemplate && item.hasAreaTarget ) {
 				const template = AbilityTemplate.fromItem(item);
 				if ( template ) template.drawPreview(event);
 				if ( actor.sheet.rendered ) actor.sheet.minimize();
@@ -89,37 +89,48 @@ class ItemWindow extends FormApplication {
 		}
 
 		if ( item.data.type !== "spell" ) throw new Error("Wrong Item type");
+		const itemData = item.data.data;
 
-		// Determine if the spell uses slots
-		let lvl = item.data.data.level;
-		let consume = false;
+		// Configure spellcasting data
+		let lvl = itemData.level;
+		const usesSlots = (lvl > 0) && CONFIG.DND5E.spellUpcastModes.includes(itemData.preparation.mode);
+		const limitedUses = !!itemData.uses.per;
+		let consume = `spells${lvl}`;
 		let placeTemplate = false;
-		const usesSlots = (lvl > 0) && item.data.data.preparation.mode === "prepared";
-		if ( !usesSlots ) return castAtLevel(item.data.data.level, 0);
 
-		// Configure the casting level and whether to consume a spell slot
-		consume = true;
-
-		if ( configureDialog ) {
+		// Configure spell slot consumption and measured template placement from the form
+		if ( usesSlots && configureDialog ) {
 			const spellFormData = await SpellCastDialog.create(actor, item);
-			lvl = parseInt(spellFormData.get("level"));
-			consume = Boolean(spellFormData.get("consume"));
+			const isPact = spellFormData.get('level') === 'pact';
+			const lvl = isPact ? actor.data.data.spells.pact.level : parseInt(spellFormData.get("level"));
+			if (Boolean(spellFormData.get("consume"))) {
+				consume = isPact ? 'pact' : `spell${lvl}`;
+			} else {
+				consome = false;
+			}
 			placeTemplate = Boolean(spellFormData.get("placeTemplate"));
 			if ( lvl !== item.data.data.level ) {
 				item = item.constructor.createOwned(mergeObject(item.data, {"data.level": lvl}, {inplace: false}), actor);
 			} 
 		}
 
+		let count = (lvl > 0) ? (actor.data.data.spells["spell"+lvl].value) : 0;
 		// Update Actor data
-		let count = actor.data.data.spells["spell"+lvl].value;
-		if ( consume && (lvl > 0) ) {
+		if ( usesSlots && consume && (lvl > 0) ) {
 			await actor.update({
-				[`data.spells.spell${lvl}.value`]: Math.max(parseInt(actor.data.data.spells["spell"+lvl].value) - 1, 0)
+				[`data.spells.${consume}.value`]: Math.max(parseInt(actor.data.data.spells[consume].value) - 1, 0)
 			});
 		} 
 
+		// Update Item data
+		if ( limitedUses ) {
+			const uses = parseInt(itemData.uses.value || 0);
+			if ( uses <= 0 ) ui.notifications.warn(game.i18n.format("DND5E.ItemNoUses", {name: item.name}));
+			await item.update({"data.uses.value": Math.max(parseInt(item.data.data.uses.value || 0) - 1, 0)});
+		}
+
 		// Invoke the Item roll
-		return castAtLevel(item.data.data.level, count);
+		return castAtLevel(lvl, count);
 	}
 
 	/*
