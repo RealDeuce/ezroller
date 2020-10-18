@@ -1,6 +1,6 @@
 import Actor5e from "../../systems/dnd5e/module/actor/entity.js";
 import Item5e from "../../systems/dnd5e/module/item/entity.js";
-import SpellCastDialog from "../../systems/dnd5e/module/apps/spell-cast-dialog.js";
+import AbilityUseDialog from "../../systems/dnd5e/module/apps/ability-use-dialog.js";
 import AbilityTemplate from "../../systems/dnd5e/module/pixi/ability-template.js";
 
 Actor5e.prototype.useSpell = async function(item, {configureDialog=true}={}) {
@@ -100,10 +100,10 @@ class ItemWindow extends FormApplication {
 
 		// Configure spell slot consumption and measured template placement from the form
 		if ( usesSlots && configureDialog ) {
-			const spellFormData = await SpellCastDialog.create(actor, item);
+			const spellFormData = await AbilityUseDialog.create(actor, item);
 			const isPact = spellFormData.get('level') === 'pact';
 			const lvl = isPact ? actor.data.data.spells.pact.level : parseInt(spellFormData.get("level"));
-			if (Boolean(spellFormData.get("consume"))) {
+			if (Boolean(spellFormData.get("consumeSlot"))) {
 				consume = isPact ? 'pact' : `spell${lvl}`;
 			} else {
 				consome = false;
