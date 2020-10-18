@@ -56,8 +56,11 @@ class ItemWindow extends FormApplication {
 					alias: actor.name
 				}
 			};
-			if (consume) {
+			if (consumeSlot) {
 				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em> using one of ${count} level <strong>${l}</strong> slots.`;
+			}
+			else if (consumeUse) {
+				chatData.content = `<strong>${actor.name}</strong> uses <em>${item.name}</em> using one of ${count} uses.`;
 			}
 			else {
 				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em>.`;
@@ -95,35 +98,50 @@ class ItemWindow extends FormApplication {
 		let lvl = itemData.level;
 		const usesSlots = (lvl > 0) && CONFIG.DND5E.spellUpcastModes.includes(itemData.preparation.mode);
 		const limitedUses = !!itemData.uses.per;
-		let consume = `spells${lvl}`;
+		let consumeSlot = `spells${lvl}`;
+		let consumeUse = false;
 		let placeTemplate = false;
 
 		// Configure spell slot consumption and measured template placement from the form
-		if ( usesSlots && configureDialog ) {
+		if ( configureDialog && (usesSlots || item.hasAreaTarget || limitedUses)) {
+			const usage = await AbilityUseDialog.create(item);
+			if ( usage === null ) return;
+
+			// Determine consumption preferences
+			consumeSlot = Boolean(usage.get("consumeSlot"));
+			consumeUse = Boolean(usage.get("consumeUse"));
+			placeTemplate = Boolean(usage.get("placeTemplate"));
+
+			// Determine the cast spell level
+			const isPact = usage.get('level') === 'pact';
+			const lvl = isPact ? actor.data.data.spells.pact.level : parseInt(usage.get("level"));
+
 			const spellFormData = await AbilityUseDialog.create(actor, item);
 			const isPact = spellFormData.get('level') === 'pact';
 			const lvl = isPact ? actor.data.data.spells.pact.level : parseInt(spellFormData.get("level"));
-			if (Boolean(spellFormData.get("consumeSlot"))) {
-				consume = isPact ? 'pact' : `spell${lvl}`;
-			} else {
-				consome = false;
-			}
-			placeTemplate = Boolean(spellFormData.get("placeTemplate"));
 			if ( lvl !== item.data.data.level ) {
-				item = item.constructor.createOwned(mergeObject(item.data, {"data.level": lvl}, {inplace: false}), actor);
-			} 
+				const upcastData = mergeObject(item.data, {"data.level": lvl}, {inplace: false});
+				item = item.constructor.createOwned(upcastData, actor);
+			}
+
+			// Denote the spell slot being consumed
+			if ( consumeSlot ) consumeSlot = isPact ? "pact" : `spell${lvl}`;
 		}
 
 		let count = (lvl > 0) ? (actor.data.data.spells["spell"+lvl].value) : 0;
 		// Update Actor data
 		if ( usesSlots && consume && (lvl > 0) ) {
+			const slots = parseInt(actor.data.data.spells[consumeSlot]?.value);
+			if ( slots === 0 || Number.isNaN(slots) ) {
+				return ui.notifications.error(game.i18n.localize("DND5E.SpellCastNoSlots"));
+			}
 			await actor.update({
-				[`data.spells.${consume}.value`]: Math.max(parseInt(actor.data.data.spells[consume].value) - 1, 0)
+				[`data.spells.${consumeSlot}.value`]: Math.max(slots - 1, 0)
 			});
 		} 
 
 		// Update Item data
-		if ( limitedUses ) {
+		if ( limitedUses && consumeUse ) {
 			const uses = parseInt(itemData.uses.value || 0);
 			if ( uses <= 0 ) ui.notifications.warn(game.i18n.format("DND5E.ItemNoUses", {name: item.name}));
 			await item.update({"data.uses.value": Math.max(parseInt(item.data.data.uses.value || 0) - 1, 0)});
@@ -152,54 +170,45 @@ class ItemWindow extends FormApplication {
 		const isTargetted = action === "save";
 		//if ( !( isTargetted || game.user.isGM || message.isAuthor ) ) return;
 
-		// Get the Actor from a synthetic Token
+		// Recover the Actor for the chat card
 		const actor = Item5e._getChatCardActor(card);
 		if ( !actor ) return;
 
-		// Get the Item
-		const item = actor.getOwnedItem(card.dataset.itemId);
+		// Get the Item from stored flag data or by the item ID on the Actor
+		const storedData = message.getFlag("dnd5e", "itemData");
+		const item = storedData ? this.createOwned(storedData, actor) : actor.getOwnedItem(card.dataset.itemId);
 		if ( !item ) {
-			return ui.notifications.error(`The requested item ${card.dataset.itemId} no longer exists on Actor ${actor.name}`)
+			return ui.notifications.error(game.i18n.format("DND5E.ActionWarningNoItem", {item: card.dataset.itemId, name: ac
+tor.name}))l
 		}
 		const spellLevel = parseInt(card.dataset.spellLevel) || null;
 
-		// Get card targets
-		let targets = [];
-		if ( isTargetted ) {
-			targets = this._getChatCardTargets(card);
-			if ( !targets.length ) {
-				ui.notifications.warn(`You must have one or more controlled Tokens in order to use this option.`);
-				return button.disabled = false;
-			}
+		// Handle different actions
+		switch ( action ) {
+			case "attack":
+				await item.rollAttack({event}); break;
+			case "damage":
+				await item.rollDamage({event, spellLevel}); break;
+			case "versatile":
+				await item.rollDamage({event, spellLevel, versatile: true}); break;
+			case "formula":
+				await item.rollFormula({event, spellLevel}); break;
+			case "save":
+				const targets = Item5e._getChatCardTargets(card);
+				for ( let token of targets ) {
+					const speaker = ChatMessage.getSpeaker({scene: canvas.scene, token: token});
+					await token.actor.rollAbilitySave(button.dataset.ability, { event, speaker });
+				}
+				break;
+			case "toolCheck":
+				await item.rollToolCheck({event}); break;
+			case "placeTemplate":
+				const template = AbilityTemplate.fromItem(item);
+				if ( template ) template.drawPreview();
+				break;
+			case "spellSlot":
+				await this.useSpell(actor, item); break;
 		}
-
-		// Attack and Damage Rolls
-		if ( action === "attack" ) await item.rollAttack({event});
-		else if ( action === "damage" ) await item.rollDamage({event, spellLevel});
-		else if ( action === "versatile" ) await item.rollDamage({event, spellLevel, versatile: true});
-		else if ( action === "formula" ) await item.rollFormula({event});
-
-		// Saving Throws for card targets
-		else if ( action === "save" ) {
-			for ( let t of targets ) {
-				await t.rollAbilitySave(button.dataset.ability, {event});
-			}
-		}
-
-		// Consumable usage
-		else if ( action === "consume" ) await item.rollConsumable({event});
-
-		// Tool usage
-		else if ( action === "toolCheck" ) await item.rollToolCheck({event});
-
-		// Spell Template Creation
-		else if ( action === "placeTemplate") {
-			const template = AbilityTemplate.fromItem(item);
-			if ( template ) template.drawPreview(event);
-		}
-
-		// Additional button handling...
-		else if ( action === "spellSlot" ) await this.useSpell(actor, item);
 
 		// Re-enable the button
 		button.disabled = false;
