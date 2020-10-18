@@ -47,23 +47,16 @@ class ItemWindow extends FormApplication {
 	 */
 	async useSpell(actor, item, {configureDialog=true}={}) {
 		function castAtLevel(l, count) {
-			let chatData = {
-				user: game.user._id,
-				type: CONST.CHAT_MESSAGE_TYPES.OTHER,
-				speaker: {
-					actor: actor._id,
-					token: actor.token,
-					alias: actor.name
-				}
-			};
+			let html = '<div class="chat-card" data-actor-id="'+actor.data._id+'" data-item-id="'+item.data._id+'">';
+			html += '<div class="card-content">';
 			if (consumeSlot) {
-				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em> using one of ${count} level <strong>${l}</strong> slots.`;
+				html += `<strong>${actor.name}</strong> casts <em>${item.name}</em> using one of ${count} level <strong>${l}</strong> slots.`;
 			}
 			else if (consumeUse) {
-				chatData.content = `<strong>${actor.name}</strong> uses <em>${item.name}</em> using one of ${count} uses.`;
+				html += `<strong>${actor.name}</strong> uses <em>${item.name}</em> using one of ${count} uses.`;
 			}
 			else {
-				chatData.content = `<strong>${actor.name}</strong> casts <em>${item.name}</em>.`;
+				html += `<strong>${actor.name}</strong> casts <em>${item.name}</em>.`;
 			}
 			if (item.hasSave) {
 				let save = item.data.data.save || {};
@@ -78,8 +71,16 @@ class ItemWindow extends FormApplication {
 					if ( save.scaling !== "flat" )
 						save.dc = null;
 				}
-				chatData.content += save.ability ? ` Save DC: ${save.dc || ""} ${CONFIG.DND5E.abilities[save.ability]}.` : "";
+				html += save.ability ? ` Save DC: ${save.dc || ""} ${CONFIG.DND5E.abilities[save.ability]}.` : "";
+				html += '</div><div class="card-buttons">';
+				html += '<button data-action="save" data-ability="'+save.ability+'" disabled>';
+				html += game.i18n.localize("DND5E.SavingThrow");
+				html += " ";
+				html += game.i18n.format("DND5E.SaveDC", {dc: save.dc || "",
+				    ability: CONFIG.DND5E.abilities[save.ability]});
+				html += '</button>';
 			}
+			html += '</div></div>';
 
 			// Initiate ability template placement workflow if selected
 			if ( placeTemplate && item.hasAreaTarget ) {
@@ -88,6 +89,17 @@ class ItemWindow extends FormApplication {
 				if ( actor.sheet.rendered ) actor.sheet.minimize();
 			}
 
+			let chatData = {
+				user: game.user._id,
+				type: CONST.CHAT_MESSAGE_TYPES.OTHER,
+				content: html,
+				flavor: item.name,
+				speaker: {
+					actor: actor._id,
+					token: actor.token,
+					alias: actor.name
+				}
+			};
 			return ChatMessage.create(chatData, {displaySheet: false});
 		}
 
@@ -126,7 +138,7 @@ class ItemWindow extends FormApplication {
 
 		let count = (lvl > 0) ? (actor.data.data.spells["spell"+lvl].value) : 0;
 		// Update Actor data
-		if ( usesSlots && consume && (lvl > 0) ) {
+		if ( usesSlots && consumeSlot && (lvl > 0) ) {
 			const slots = parseInt(actor.data.data.spells[consumeSlot]?.value);
 			if ( slots === 0 || Number.isNaN(slots) ) {
 				return ui.notifications.error(game.i18n.localize("DND5E.SpellCastNoSlots"));
@@ -171,11 +183,10 @@ class ItemWindow extends FormApplication {
 		if ( !actor ) return;
 
 		// Get the Item from stored flag data or by the item ID on the Actor
-		const storedData = message.getFlag("dnd5e", "itemData");
-		const item = storedData ? this.createOwned(storedData, actor) : actor.getOwnedItem(card.dataset.itemId);
+		//const storedData = message.getFlag("dnd5e", "itemData");
+		const item = /* storedData ? this.createOwned(storedData, actor) : */actor.getOwnedItem(card.dataset.itemId);
 		if ( !item ) {
-			return ui.notifications.error(game.i18n.format("DND5E.ActionWarningNoItem", {item: card.dataset.itemId, name: ac
-tor.name}))l
+			return ui.notifications.error(game.i18n.format("DND5E.ActionWarningNoItem", {item: card.dataset.itemId, name: actor.name}));
 		}
 		const spellLevel = parseInt(card.dataset.spellLevel) || null;
 
