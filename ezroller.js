@@ -115,10 +115,6 @@ class ItemWindow extends FormApplication {
 			// Determine the cast spell level
 			const isPact = usage.get('level') === 'pact';
 			const lvl = isPact ? actor.data.data.spells.pact.level : parseInt(usage.get("level"));
-
-			const spellFormData = await AbilityUseDialog.create(actor, item);
-			const isPact = spellFormData.get('level') === 'pact';
-			const lvl = isPact ? actor.data.data.spells.pact.level : parseInt(spellFormData.get("level"));
 			if ( lvl !== item.data.data.level ) {
 				const upcastData = mergeObject(item.data, {"data.level": lvl}, {inplace: false});
 				item = item.constructor.createOwned(upcastData, actor);
