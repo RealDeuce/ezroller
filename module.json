@@ -2,7 +2,7 @@
 	"name": "ezroller",
 	"title": "E-Z Roller",
 	"description": "Next Action Window",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"author": "Deuce",
 	"languages": [
 		{
@@ -19,5 +19,5 @@
 	"manifest": "https://raw.githubusercontent.com/RealDeuce/ezroller/master/module.json",
 	"download": "https://raw.githubusercontent.com/RealDeuce/ezroller/master/ezroller.zip",
 	"minimumCoreVersion": "0.7.2",
-	"compatibleCoreVersion": "0.7.4"
+	"compatibleCoreVersion": "0.7.5"
 }
